@@ -47,7 +47,7 @@ passport.deserializeUser(function (user, done) {
 // Define routes for authentication
 app.get(
   "/auth/google/:id_token",
-  passport.authenticate("google", { scope: ["profile", "email"] })
+  passport.authenticate("id_token", { scope: ["profile", "email"] })
 );
 
 app.get(
