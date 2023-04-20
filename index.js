@@ -8,71 +8,41 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 const PORT = process.env.PORT || 5050;
-const passport = require("passport");
-const CLIENTID = "776399895709-3ddui6f51u8capadvdlsh0nejmk2ph8f.apps.googleusercontent.com";
-const SECERET ="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";
-const callBACKURL ="http://localhost:3000/auth/google/callback";
-const GoogleStrategy = require("passport-google-oauth20").Strategy;
-require("dotenv").config();
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: CLIENTID,
-      clientSecret: SECERET,
-      callbackURL: callBACKURL,
-    },
-    function (accessToken, refreshToken, profile, cb) {
-      // In this function, you can verify the user's Google profile
-      // and create or update a user account in your database.
-      // The profile object contains the user's Google profile information.
-      // Call cb(null, user) to return the user object to Passport.
-      // Call cb(null, false) to indicate authentication failure.
-    }
-  )
-);
-
-// Initialize Passport.js and enable session support
-app.use(passport.initialize());
-app.use(passport.session());
-
-passport.serializeUser(function (user, done) {
-  done(null, user);
-});
-
-passport.deserializeUser(function (user, done) {
-  done(null, user);
-});
-
-// Define routes for authentication
-app.get(
-  "/auth/google/:id_token",
-  passport.authenticate("id_token", { scope: ["profile", "email"] })
-);
-
-app.get(
-  "/auth/google/callback",
-  passport.authenticate("google", { failureRedirect: "/login" }),
-  function (req, res) {
-    // Successful authentication, redirect home.
-    res.redirect("/");
-  }
-);
-// Example of a route that requires authentication
-app.get("/protected-route", passport.authenticate("google"), function(req, res) {
-  // This route is accessible only if the user is authenticated with Google
-  res.send("Welcome to the protected route!");
-});
-// Example of a route that retrieves the user's information
-app.get("/user-info", passport.authenticate("google"), function(req, res) {
-  // This route is accessible only if the user is authenticated with Google
-  const name = req.user.displayName;
-  const email = req.user.emails[0].value;
-  res.send(`Hello ${name}, your email is ${email}`);
-});
-
-
-
+const { OAuth2Client } = require('google-auth-library')
+const client = new OAuth2Client(process.env.CLIENT_ID)
+app.post("/api/v1/auth/google", async (req, res) => {
+    const { token }  = req.body
+    const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.CLIENT_ID
+    });
+    const { name, email, picture } = ticket.getPayload();    
+    const user = await db.user.upsert({ 
+      where: { email: email },
+      update: { name, picture },
+      create: { name, email, picture }
+  })
+req.session.userId = user.id
+res.status(201)
+res.json(user)
+})
+app.use(async (req, res, next) => {
+  const user = await db.user.findFirst({where: { id:  req.session.userId }})
+  req.user = user
+  next()
+})
+app.delete("/api/v1/auth/logout", async (req, res) => {
+  await req.session.destroy()
+  res.status(200)
+  res.json({
+      message: "Logged out successfully"
+  })
+})
+app.get("/me", async (req, res) => {
+  res.status(200)
+  res.json(req.user)
+})
 // create user account
 app.get("/account/create/:name/:email/:password", function(req, res) {
   // check if account exists
